@@ -217,3 +217,5 @@ if $purge_snapshots; then
   echo "Snapshot Purging is Starting Now."
   purge_EBS_Snapshots
 fi
+
+# vim: tabstop=2 shiftwidth=2 expandtab
