@@ -49,45 +49,66 @@ get_EBS_List() {
   esac
   # creates a list of all ebs volumes that match the selection string from
   # above
-  ebs_backup_list=$(aws ec2 describe-volumes --region $region $ebs_selection_string --output text --query 'Volumes[*].VolumeId')
+  # shellcheck disable=SC2086
+  ebs_backup_list=$(
+    aws ec2 describe-volumes \
+      --region "$region" \
+      $ebs_selection_string \
+      --output text \
+      --query 'Volumes[*].VolumeId'
+  )
   # takes the output of the previous command
-  ebs_backup_list_result=$(echo $?)
+  ebs_backup_list_result=$?
   if [[ $ebs_backup_list_result -gt 0 ]]; then
-    echo -e "An error occurred when running ec2-describe-volumes. The error returned is below:\n$ebs_backup_list_complete" 1>&2 ; exit 70
+    echo -e "An error occurred when running ec2-describe-volumes. The error returned is below:\n$ebs_backup_list" 1>&2 ; exit 70
   fi
 }
 
 create_EBS_Snapshot_Tags() {
   # snapshot tags holds all tags that need to be applied to a given snapshot -
   # by aggregating tags we ensure that ec2-create-tags is called only onece
-  snapshot_tags="Key=CreatedBy,Value=ec2-automate-backup"
+  local snapshot_tags=("Key=CreatedBy,Value=ec2-automate-backup")
+
   # if $name_tag_create is true then append ec2ab_${ebs_selected}_$current_date
   # to the variable $snapshot_tags
   if $name_tag_create; then
-    snapshot_tags="$snapshot_tags Key=Name,Value=ec2ab_${ebs_selected}_$current_date"
+    snapshot_tags+=("Key=Name,Value=ec2ab_${ebs_selected}_${current_date}")
   fi
+
   # if $hostname_tag_create is true then append --tag InitiatingHost=$(hostname
   # -f) to the variable $snapshot_tags
   if $hostname_tag_create; then
-    snapshot_tags="$snapshot_tags Key=InitiatingHost,Value='$(hostname -s)'"
+    snapshot_tags=("Key=InitiatingHost,Value='$(hostname -s)'")
   fi
+
   # if $purge_after_date_fe is true, then append $purge_after_date_fe to the
   # variable $snapshot_tags
   if [[ -n $purge_after_date_fe ]]; then
-    snapshot_tags="$snapshot_tags Key=PurgeAfterFE,Value=$purge_after_date_fe Key=PurgeAllow,Value=true"
+    snapshot_tags=("Key=PurgeAfterFE,Value=${purge_after_date_fe}")
+    snapshot_tags=("Key=PurgeAllow,Value=true")
   fi
+
   # if $user_tags is true, then append Volume=$ebs_selected and
   # Created=$current_date to the variable $snapshot_tags
   if $user_tags; then
-    snapshot_tags="$snapshot_tags Key=Volume,Value=${ebs_selected} Key=Created,Value=$current_date"
+    snapshot_tags=("Key=Volume,Value=${ebs_selected}")
+    snapshot_tags=("Key=Created,Value=$current_date")
   fi
+
   # if $snapshot_tags is not zero length then set the tag on the snapshot using
   # aws ec2 create-tags
-  if [[ -n $snapshot_tags ]]; then
-    echo "Tagging Snapshot $ec2_snapshot_resource_id with the following Tags: $snapshot_tags"
-    tags_argument="--tags $snapshot_tags"
-    aws_ec2_create_tag_result=$(aws ec2 create-tags --resources $ec2_snapshot_resource_id --region $region $tags_argument --output text 2>&1)
-  fi
+  echo "Tagging Snapshot $ec2_snapshot_resource_id with the following Tags:"
+  for t in "${snapshot_tags[@]}"; do
+    echo "$t"
+  done
+
+  tags_argument="--tags ${snapshot_tags[*]}"
+  # shellcheck disable=SC2086
+  aws ec2 create-tags \
+    --resources "$ec2_snapshot_resource_id" \
+    --region "$region" $tags_argument \
+    --output text \
+    2>&1
 }
 
 get_date_binary() {
@@ -117,26 +138,40 @@ get_purge_after_date_fe() {
     [0-9]*m) purge_after_value_seconds=$(( ${purge_after_input%?} * 60 ));;
     # no trailing digits default is days - multiply by 86400 (number of minutes
     # in a day)
-    *) purge_after_value_seconds=$(( $purge_after_input * 86400 ));;
+    *) purge_after_value_seconds=$(( purge_after_input * 86400 ));;
   esac
   # based on the date_binary variable, the case statement below will determine
   # the method to use to determine "purge_after_days" in the future
   case $date_binary in
-    linux-gnu) echo $(date -d +${purge_after_value_seconds}sec -u +%s) ;;
-    posix) echo $(date -v +${purge_after_value_seconds}S -u +%s) ;;
-    *) echo $(date -d +${purge_after_value_seconds}sec -u +%s) ;;
+    linux-gnu)
+      date -d +${purge_after_value_seconds}sec -u +%s;;
+    posix)
+      date -v +${purge_after_value_seconds}S -u +%s;;
+    *)
+      date -d +${purge_after_value_seconds}sec -u +%s;;
   esac
 }
 
 purge_EBS_Snapshots() {
   # snapshot_purge_allowed is a string containing the SnapshotIDs of snapshots
   # that contain a tag with the key value/pair PurgeAllow=true
-  snapshot_purge_allowed=$(aws ec2 describe-snapshots --region $region --filters Name=tag:PurgeAllow,Values=true --output text --query 'Snapshots[*].SnapshotId')
+  snapshot_purge_allowed=$(
+    aws ec2 describe-snapshots \
+      --region "$region" \
+      --filters Name=tag:PurgeAllow,Values=true \
+      --output text \
+      --query 'Snapshots[*].SnapshotId'
+  )
 
   for snapshot_id_evaluated in $snapshot_purge_allowed; do
     # gets the "PurgeAfterFE" date which is in UTC with UNIX Time format (or
     # xxxxxxxxxx / %s)
-    purge_after_fe=$(aws ec2 describe-snapshots --region $region --snapshot-ids $snapshot_id_evaluated --output text | grep ^TAGS.*PurgeAfterFE | cut -f 3)
+    purge_after_fe=$(
+      aws ec2 describe-snapshots \
+        --region "$region" \
+        --snapshot-ids "$snapshot_id_evaluated" \
+        --output text | grep '^TAGS.*PurgeAfterFE' | cut -f 3
+    )
     # if purge_after_date is not set then we have a problem. Need to alert
     # user.
     if [[ -z $purge_after_fe ]]; then
@@ -149,7 +184,9 @@ purge_EBS_Snapshots() {
       # and the snapshot can be safely purged
       if [[ $purge_after_fe < $current_date ]]; then
         echo "Snapshot \"$snapshot_id_evaluated\" with the PurgeAfterFE date of \"$purge_after_fe\" will be deleted."
-        aws_ec2_delete_snapshot_result=$(aws ec2 delete-snapshot --region $region --snapshot-id $snapshot_id_evaluated --output text 2>&1)
+        aws ec2 delete-snapshot --region "$region" \
+          --snapshot-id "$snapshot_id_evaluated" \
+          --output text 2>&1
       fi
     fi
   done
@@ -159,7 +196,7 @@ purge_EBS_Snapshots() {
 # script execution are available
 prerequisite_check
 
-app_name=$(basename $0)
+app_name="$(basename "$0")"
 # sets defaults
 selection_method="volumeid"
 # date_binary allows a user to set the "date" binary that is installed on their
@@ -200,7 +237,8 @@ done
 # configuration required for ec2-automate-backup to run correctly
 if [[ -n $cron_primer ]]; then
   if [[ -f $cron_primer ]]; then
-    source $cron_primer
+    # shellcheck disable=SC1090
+    source "$cron_primer"
   else
     echo "Cron Primer File \"$cron_primer\" Could Not Be Found." 1>&2 ; exit 70
   fi
@@ -239,9 +277,15 @@ get_EBS_List
 # currently selected EBS volume is passed in as "ebs_selected"
 for ebs_selected in $ebs_backup_list; do
   ec2_snapshot_description="ec2ab_${ebs_selected}_$current_date"
-  ec2_snapshot_resource_id=$(aws ec2 create-snapshot --region $region --description $ec2_snapshot_description --volume-id $ebs_selected --output text --query SnapshotId 2>&1)
-  if [[ $? != 0 ]]; then
-    echo -e "An error occurred when running ec2-create-snapshot. The error returned is below:\n$ec2_create_snapshot_result" 1>&2 ; exit 70
+  if ! ec2_snapshot_resource_id=$(
+    aws ec2 create-snapshot \
+      --region "$region" \
+      --description "$ec2_snapshot_description" \
+      --volume-id "$ebs_selected" \
+      --output text \
+      --query SnapshotId 2>&1
+  ); then
+    echo -e "An error occurred when running ec2-create-snapshot:\n$ec2_snapshot_resource_id" 1>&2 ; exit 70
   fi
   create_EBS_Snapshot_Tags
 done
