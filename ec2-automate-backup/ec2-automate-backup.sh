@@ -91,22 +91,22 @@ get_date_binary() {
 }
 
 get_purge_after_date_fe() {
-case $purge_after_input in
-  #any number of numbers followed by a letter "d" or "days" multiplied by 86400 (number of seconds in a day)
-  [0-9]*d) purge_after_value_seconds=$(( ${purge_after_input%?} * 86400 )) ;;
-  #any number of numbers followed by a letter "h" or "hours" multiplied by 3600 (number of seconds in an hour)
-  [0-9]*h) purge_after_value_seconds=$(( ${purge_after_input%?} * 3600 )) ;;
-  #any number of numbers followed by a letter "m" or "minutes" multiplied by 60 (number of seconds in a minute)
-  [0-9]*m) purge_after_value_seconds=$(( ${purge_after_input%?} * 60 ));;
-  #no trailing digits default is days - multiply by 86400 (number of minutes in a day)
-  *) purge_after_value_seconds=$(( $purge_after_input * 86400 ));;
-esac
-#based on the date_binary variable, the case statement below will determine the method to use to determine "purge_after_days" in the future
-case $date_binary in
-  linux-gnu) echo $(date -d +${purge_after_value_seconds}sec -u +%s) ;;
-  posix) echo $(date -v +${purge_after_value_seconds}S -u +%s) ;;
-  *) echo $(date -d +${purge_after_value_seconds}sec -u +%s) ;;
-esac
+  case $purge_after_input in
+    #any number of numbers followed by a letter "d" or "days" multiplied by 86400 (number of seconds in a day)
+    [0-9]*d) purge_after_value_seconds=$(( ${purge_after_input%?} * 86400 )) ;;
+    #any number of numbers followed by a letter "h" or "hours" multiplied by 3600 (number of seconds in an hour)
+    [0-9]*h) purge_after_value_seconds=$(( ${purge_after_input%?} * 3600 )) ;;
+    #any number of numbers followed by a letter "m" or "minutes" multiplied by 60 (number of seconds in a minute)
+    [0-9]*m) purge_after_value_seconds=$(( ${purge_after_input%?} * 60 ));;
+    #no trailing digits default is days - multiply by 86400 (number of minutes in a day)
+    *) purge_after_value_seconds=$(( $purge_after_input * 86400 ));;
+  esac
+  #based on the date_binary variable, the case statement below will determine the method to use to determine "purge_after_days" in the future
+  case $date_binary in
+    linux-gnu) echo $(date -d +${purge_after_value_seconds}sec -u +%s) ;;
+    posix) echo $(date -v +${purge_after_value_seconds}S -u +%s) ;;
+    *) echo $(date -d +${purge_after_value_seconds}sec -u +%s) ;;
+  esac
 }
 
 purge_EBS_Snapshots() {
