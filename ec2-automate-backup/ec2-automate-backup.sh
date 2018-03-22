@@ -285,7 +285,14 @@ while getopts :s:c:r:v:t:k:pnhu opt; do
     h) HOSTNAME_TAG_CREATE=true ;;
     p) PURGE_SNAPSHOTS=true ;;
     u) USER_TAGS=true ;;
-    *) echo "Error with Options Input. Cause of failure is most likely that an unsupported parameter was passed or a parameter was passed without a corresponding option." 1>&2 ; exit 64 ;;
+    *)
+      fail "$(cat <<-EOF
+				Error with Options Input. Cause of failure is most likely that an
+				unsupported parameter was passed or a parameter was passed without a
+				corresponding option.
+				EOF
+      )" 64
+      ;;
   esac
 done
 
@@ -322,7 +329,11 @@ if [[ -n $PURGE_AFTER_INPUT ]]; then
     get_date_binary
   fi
   PURGE_AFTER_DATE_FE=$(get_purge_after_date_fe)
-  echo "Snapshots taken by $APP_NAME will be eligible for purging after the following date (the purge after date given in seconds from epoch): $PURGE_AFTER_DATE_FE."
+  cat <<-EOF
+		Snapshots taken by $APP_NAME will be eligible for purging after the
+		following date (the purge after date given in seconds from epoch):
+		$PURGE_AFTER_DATE_FE.
+		EOF
 fi
 
 # get_ebs_list gets a list of EBS instances for which a snapshot is desired.
@@ -342,7 +353,11 @@ for ebs_selected in $EBS_BACKUP_LIST; do
       --output text \
       --query SnapshotId 2>&1
   ); then
-    echo -e "An error occurred when running ec2-create-snapshot:\n$EC2_SNAPSHOT_RESOURCE_ID" 1>&2 ; exit 70
+    fail "$(cat <<-EOF
+			An error occurred when running ec2-create-snapshot:
+			$EC2_SNAPSHOT_RESOURCE_ID
+			EOF
+    )" 70
   fi
   create_ebs_snapshot_tags
 done
