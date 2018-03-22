@@ -27,19 +27,18 @@ fail() {
   exit $code
 }
 
+has_cmd() {
+  local command=${1?command is required}
+  command -v "$command" > /dev/null 2>&1
+}
+
 # confirms that executables required for succesful script execution are
 # available
 prerequisite_check() {
-  for prerequisite in basename cut date aws; do
-    # use of "hash" chosen as it is a shell builtin and will add programs to
-    # hash table, possibly speeding execution. Use of type also considered -
-    # open to suggestions.
-    hash $prerequisite &> /dev/null
-    if [[ $? == 1 ]]; then
-      # has exits with exit status of 70, executable was not found
+  for cmd in basename cut date aws; do
+    if ! has_cmd $cmd; then
       fail "$(cat <<-EOF
-				In order to use ${APP_NAME}, the executable "${prerequisite}" must be
-				installed.
+        In order to use ${APP_NAME}, the executable "${cmd}" must be installed.
 				EOF
       )" 70
     fi
