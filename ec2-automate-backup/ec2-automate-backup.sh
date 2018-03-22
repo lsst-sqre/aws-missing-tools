@@ -27,34 +27,33 @@ fail() {
   exit $code
 }
 
+has_cmd() {
+  local command=${1?command is required}
+  command -v "$command" > /dev/null 2>&1
+}
+
 # confirms that executables required for succesful script execution are
 # available
 prerequisite_check() {
-  for prerequisite in basename cut date aws; do
-    # use of "hash" chosen as it is a shell builtin and will add programs to
-    # hash table, possibly speeding execution. Use of type also considered -
-    # open to suggestions.
-    hash $prerequisite &> /dev/null
-    if [[ $? == 1 ]]; then
-      # has exits with exit status of 70, executable was not found
+  for cmd in basename cut date aws; do
+    if ! has_cmd $cmd; then
       fail "$(cat <<-EOF
-				In order to use ${app_name}, the executable "${prerequisite}" must be
-				installed.
+        In order to use ${APP_NAME}, the executable "${cmd}" must be installed.
 				EOF
       )" 70
     fi
   done
 }
 
-# get_EBS_List gets a list of available EBS instances depending upon the
-# selection_method of EBS selection that is provided by user input
-get_EBS_List() {
-  case $selection_method in
+# get_ebs_list gets a list of available EBS instances depending upon the
+# SELECTION_METHOD of EBS selection that is provided by user input
+get_ebs_list() {
+  case $SELECTION_METHOD in
     volumeid)
-      if [[ -z $volumeid ]]; then
+      if [[ -z $VOLUMEID ]]; then
         fail "$(cat <<-EOF
-					The selection method "volumeid" (which is ${app_name}'s default
-					selection_method of operation or requested by using the -s volumeid
+					The selection method "volumeid" (which is ${APP_NAME}'s default
+					SELECTION_METHOD of operation or requested by using the -s volumeid
 					parameter) requires a volumeid (-v volumeid) for operation. Correct
 					usage is as follows: "-v vol-6d6a0527","-s volumeid -v vol-6d6a0527"
 					or "-v "vol-6d6a0527 vol-636a0112" if multiple volumes are to be
@@ -62,34 +61,35 @@ get_EBS_List() {
 					EOF
         )" 64
       fi
-      ebs_selection_string="--volume-ids ${volumeid}"
+      local ebs_selection_string="--volume-ids ${VOLUMEID}"
       ;;
     tag)
-      if [[ -z $tag ]]; then
+      if [[ -z $TAG ]]; then
         fail "$(cat <<-EOF
-					The selected selection_method "tag" (-s tag) requires a valid tag (-t
+					The selected SELECTION_METHOD "tag" (-s tag) requires a valid tag (-t
 					Backup,Values=true) for operation. Correct usage is as follows: "-s
 					tag -t Backup,Values=true."
 					EOF
         )" 64
       fi
-      ebs_selection_string="--filters Name=tag:${tag}"
+      local ebs_selection_string="--filters Name=tag:${TAG}"
       ;;
     *)
       fail "$(cat <<-EOF
-				If you specify a selection_method (-s selection_method) for selecting
+				If you specify a SELECTION_METHOD (-s SELECTION_METHOD) for selecting
 				EBS volumes you must select either "volumeid" (-s volumeid) or "tag"
 				(-s tag).
 				EOF
       )" 64
       ;;
   esac
+
   # creates a list of all ebs volumes that match the selection string from
   # above
   # shellcheck disable=SC2086
-  if ! ebs_backup_list=$(
+  if ! EBS_BACKUP_LIST=$(
     aws ec2 describe-volumes \
-      --region "$region" \
+      --region "$REGION" \
       $ebs_selection_string \
       --output text \
       --query 'Volumes[*].VolumeId'
@@ -97,55 +97,45 @@ get_EBS_List() {
     fail "$(cat <<-EOF
 			An error occurred when running ec2-describe-volumes. The error returned
 			is below:
-			$ebs_backup_list
+			$EBS_BACKUP_LIST
 			EOF
     )" 70
   fi
 }
 
-create_EBS_Snapshot_Tags() {
-  # snapshot tags holds all tags that need to be applied to a given snapshot -
+create_ebs_snapshot_tags() {
+  # snapshot_tags holds all tags that need to be applied to a given snapshot -
   # by aggregating tags we ensure that ec2-create-tags is called only onece
   local snapshot_tags=("Key=CreatedBy,Value=ec2-automate-backup")
 
-  # if $name_tag_create is true then append ec2ab_${ebs_selected}_$current_date
-  # to the variable $snapshot_tags
-  if $name_tag_create; then
-    snapshot_tags+=("Key=Name,Value=ec2ab_${ebs_selected}_${current_date}")
+  if $NAME_TAG_CREATE; then
+    snapshot_tags+=("Key=Name,Value=ec2ab_${ebs_selected}_${CURRENT_DATE}")
   fi
 
-  # if $hostname_tag_create is true then append --tag InitiatingHost=$(hostname
-  # -f) to the variable $snapshot_tags
-  if $hostname_tag_create; then
+  if $HOSTNAME_TAG_CREATE; then
     snapshot_tags=("Key=InitiatingHost,Value='$(hostname -s)'")
   fi
 
-  # if $purge_after_date_fe is true, then append $purge_after_date_fe to the
-  # variable $snapshot_tags
-  if [[ -n $purge_after_date_fe ]]; then
-    snapshot_tags=("Key=PurgeAfterFE,Value=${purge_after_date_fe}")
+  if [[ -n $PURGE_AFTER_DATE_FE ]]; then
+    snapshot_tags=("Key=PurgeAfterFE,Value=${PURGE_AFTER_DATE_FE}")
     snapshot_tags=("Key=PurgeAllow,Value=true")
   fi
 
-  # if $user_tags is true, then append Volume=$ebs_selected and
-  # Created=$current_date to the variable $snapshot_tags
-  if $user_tags; then
+  if $USER_TAGS; then
     snapshot_tags=("Key=Volume,Value=${ebs_selected}")
-    snapshot_tags=("Key=Created,Value=$current_date")
+    snapshot_tags=("Key=Created,Value=$CURRENT_DATE")
   fi
 
-  # if $snapshot_tags is not zero length then set the tag on the snapshot using
-  # aws ec2 create-tags
-  echo "Tagging Snapshot $ec2_snapshot_resource_id with the following Tags:"
+  echo "Tagging Snapshot $EC2_SNAPSHOT_RESOURCE_ID with the following Tags:"
   for t in "${snapshot_tags[@]}"; do
     echo "$t"
   done
 
-  tags_argument="--tags ${snapshot_tags[*]}"
+  local tags_argument="--tags ${snapshot_tags[*]}"
   # shellcheck disable=SC2086
   aws ec2 create-tags \
-    --resources "$ec2_snapshot_resource_id" \
-    --region "$region" $tags_argument \
+    --resources "$EC2_SNAPSHOT_RESOURCE_ID" \
+    --region "$REGION" $tags_argument \
     --output text \
     2>&1
 }
@@ -155,33 +145,42 @@ get_date_binary() {
   # support to -o option
   # $(uname) on OS X defaults to $(uname -s) and $(uname) on GNU/Linux defaults
   # to $(uname -s)
+  local uname_result
   uname_result=$(uname)
   case $uname_result in
-    Darwin) date_binary="posix" ;;
-    FreeBSD) date_binary="posix" ;;
-    Linux) date_binary="linux-gnu" ;;
-    *) date_binary="unknown" ;;
+    Darwin|FreeBSD)
+      echo 'posix';;
+    Linux)
+      echo 'linux-gnu';;
+    *)
+      echo 'unknown';;
   esac
 }
 
 get_purge_after_date_fe() {
-  case $purge_after_input in
-    # any number of numbers followed by a letter "d" or "days" multiplied by
-    # 86400 (number of seconds in a day)
-    [0-9]*d) purge_after_value_seconds=$(( ${purge_after_input%?} * 86400 )) ;;
-    # any number of numbers followed by a letter "h" or "hours" multiplied by
-    # 3600 (number of seconds in an hour)
-    [0-9]*h) purge_after_value_seconds=$(( ${purge_after_input%?} * 3600 )) ;;
-    # any number of numbers followed by a letter "m" or "minutes" multiplied by
-    # 60 (number of seconds in a minute)
-    [0-9]*m) purge_after_value_seconds=$(( ${purge_after_input%?} * 60 ));;
-    # no trailing digits default is days - multiply by 86400 (number of minutes
-    # in a day)
-    *) purge_after_value_seconds=$(( purge_after_input * 86400 ));;
+  local purge_after_value_seconds
+
+  case $PURGE_AFTER_INPUT in
+    # numbers followed by a letter "d" or "days"
+    [0-9]*d)
+      purge_after_value_seconds=$(( ${PURGE_AFTER_INPUT%?} * 86400 ))
+      ;;
+    # numbers followed by a letter "h" or "hours"
+    [0-9]*h)
+      purge_after_value_seconds=$(( ${PURGE_AFTER_INPUT%?} * 3600 ))
+      ;;
+    # numbers followed by a letter "m" or "minutes"
+    [0-9]*m)
+      purge_after_value_seconds=$(( ${PURGE_AFTER_INPUT%?} * 60 ))
+      ;;
+    # no trailing letter defaults to days
+    *)
+      purge_after_value_seconds=$(( PURGE_AFTER_INPUT * 86400 ))
+      ;;
   esac
-  # based on the date_binary variable, the case statement below will determine
-  # the method to use to determine "purge_after_days" in the future
-  case $date_binary in
+
+  # convert seconds into the future into a unix epoch
+  case $DATE_BINARY in
     linux-gnu)
       date -d +${purge_after_value_seconds}sec -u +%s;;
     posix)
@@ -191,12 +190,13 @@ get_purge_after_date_fe() {
   esac
 }
 
-purge_EBS_Snapshots() {
+purge_ebs_snapshots() {
   # snapshot_purge_allowed is a string containing the SnapshotIDs of snapshots
   # that contain a tag with the key value/pair PurgeAllow=true
+  local snapshot_purge_allowed
   snapshot_purge_allowed=$(
     aws ec2 describe-snapshots \
-      --region "$region" \
+      --region "$REGION" \
       --filters Name=tag:PurgeAllow,Values=true \
       --output text \
       --query 'Snapshots[*].SnapshotId'
@@ -205,12 +205,16 @@ purge_EBS_Snapshots() {
   for snapshot_id_evaluated in $snapshot_purge_allowed; do
     # gets the "PurgeAfterFE" date which is in UTC with UNIX Time format (or
     # xxxxxxxxxx / %s)
+    local purge_after_fe
+    # shellcheck disable=SC2016
     purge_after_fe=$(
       aws ec2 describe-snapshots \
-        --region "$region" \
+        --region "$REGION" \
         --snapshot-ids "$snapshot_id_evaluated" \
-        --output text | grep '^TAGS.*PurgeAfterFE' | cut -f 3
+        --output text \
+        --query 'Snapshots[*].Tags[?Key==`PurgeAfterFE`].Value'
     )
+
     # if purge_after_date is not set then we have a problem. Need to alert
     # user.
     if [[ -z $purge_after_fe ]]; then
@@ -219,21 +223,22 @@ purge_EBS_Snapshots() {
       print_error "$(cat <<-EOF
 				Snapshot with the Snapshot ID "${snapshot_id_evaluated}" has the tag
 				"PurgeAllow=true" but does not have a "PurgeAfterFE=xxxxxxxxxx"
-				key/value pair.  ${app_name} is unable to determine if
+				key/value pair.  ${APP_NAME} is unable to determine if
 				${snapshot_id_evaluated} should be purged."
 				EOF
 			)"
     else
-      # if $purge_after_fe is less than $current_date then
+      # if $purge_after_fe is less than $CURRENT_DATE then
       # PurgeAfterFE is earlier than the current date
       # and the snapshot can be safely purged
-      if [[ $purge_after_fe < $current_date ]]; then
+      if [[ $purge_after_fe < $CURRENT_DATE ]]; then
         print_error "$(cat <<-EOF
 					Snapshot "${snapshot_id_evaluated}" with the PurgeAfterFE date of
 					"${purge_after_fe}" will be deleted."
 					EOF
         )"
-        aws ec2 delete-snapshot --region "$region" \
+        aws ec2 delete-snapshot \
+          --region "$REGION" \
           --snapshot-id "$snapshot_id_evaluated" \
           --output text 2>&1
       fi
@@ -245,104 +250,93 @@ purge_EBS_Snapshots() {
 # script execution are available
 prerequisite_check
 
-app_name="$(basename "$0")"
+APP_NAME="$(basename "$0")"
 # sets defaults
-selection_method="volumeid"
-# date_binary allows a user to set the "date" binary that is installed on their
+SELECTION_METHOD="volumeid"
+# DATE_BINARY allows a user to set the "date" binary that is installed on their
 # system and, therefore, the options that will be given to the date binary to
 # perform date calculations
-date_binary=""
+DATE_BINARY=${DATE_BINARY:-$(get_date_binary)}
 # sets the "Name" tag set for a snapshot to false - using "Name" requires that
 # ec2-create-tags be called in addition to ec2-create-snapshot
-name_tag_create=false
+NAME_TAG_CREATE=false
 # sets the "InitiatingHost" tag set for a snapshot to false
-hostname_tag_create=false
-# sets the user_tags feature to false - user_tag creates tags on snapshots - by
-# default each snapshot is tagged with volume_id and current_date timestamp
-user_tags=false
-# sets the Purge Snapshot feature to false - if purge_snapshots=true then
+HOSTNAME_TAG_CREATE=false
+# sets the USER_TAGS feature to false - user_tag creates tags on snapshots - by
+# default each snapshot is tagged with volume_id and CURRENT_DATE timestamp
+USER_TAGS=false
+# sets the Purge Snapshot feature to false - if PURGE_SNAPSHOTS=true then
 # snapshots will be purged
-purge_snapshots=false
-# handles options processing
+PURGE_SNAPSHOTS=false
+# default aws region
+REGION=${AWS_DEFAULT_REGION:-us-east-1}
 
 while getopts :s:c:r:v:t:k:pnhu opt; do
   case $opt in
-    s) selection_method="$OPTARG" ;;
-    c) cron_primer="$OPTARG" ;;
-    r) region="$OPTARG" ;;
-    v) volumeid="$OPTARG" ;;
-    t) tag="$OPTARG" ;;
-    k) purge_after_input="$OPTARG" ;;
-    n) name_tag_create=true ;;
-    h) hostname_tag_create=true ;;
-    p) purge_snapshots=true ;;
-    u) user_tags=true ;;
-    *) echo "Error with Options Input. Cause of failure is most likely that an unsupported parameter was passed or a parameter was passed without a corresponding option." 1>&2 ; exit 64 ;;
+    s) SELECTION_METHOD="$OPTARG" ;;
+    r) REGION="$OPTARG" ;;
+    v) VOLUMEID="$OPTARG" ;;
+    t) TAG="$OPTARG" ;;
+    k) PURGE_AFTER_INPUT="$OPTARG" ;;
+    n) NAME_TAG_CREATE=true ;;
+    h) HOSTNAME_TAG_CREATE=true ;;
+    p) PURGE_SNAPSHOTS=true ;;
+    u) USER_TAGS=true ;;
+    *)
+      fail "$(cat <<-EOF
+				Error with Options Input. Cause of failure is most likely that an
+				unsupported parameter was passed or a parameter was passed without a
+				corresponding option.
+				EOF
+      )" 64
+      ;;
   esac
 done
 
-# sources "cron_primer" file for running under cron or other restricted
-# environments - this file should contain the variables and environment
-# configuration required for ec2-automate-backup to run correctly
-if [[ -n $cron_primer ]]; then
-  if [[ -f $cron_primer ]]; then
-    # shellcheck disable=SC1090
-    source "$cron_primer"
-  else
-    echo "Cron Primer File \"$cron_primer\" Could Not Be Found." 1>&2 ; exit 70
-  fi
-fi
-
-# if region is not set then:
-if [[ -z $region ]]; then
-  # if the environment variable $EC2_REGION is not set set to us-east-1
-  if [[ -z $EC2_REGION ]]; then
-    region="us-east-1"
-  else
-    region=$EC2_REGION
-  fi
-fi
-
 # sets date variable
-current_date=$(date -u +%s)
+CURRENT_DATE=$(date -u +%s)
 
 # sets the PurgeAfterFE tag to the number of seconds that a snapshot should be
 # retained
-if [[ -n $purge_after_input ]]; then
-  # if the date_binary is not set, call the get_date_binary function
-  if [[ -z $date_binary ]]; then
-    get_date_binary
-  fi
-  purge_after_date_fe=$(get_purge_after_date_fe)
-  echo "Snapshots taken by $app_name will be eligible for purging after the following date (the purge after date given in seconds from epoch): $purge_after_date_fe."
+if [[ -n $PURGE_AFTER_INPUT ]]; then
+  PURGE_AFTER_DATE_FE=$(get_purge_after_date_fe)
+  cat <<-EOF
+		Snapshots taken by $APP_NAME will be eligible for purging after the
+		following date (the purge after date given in seconds from epoch):
+		$PURGE_AFTER_DATE_FE.
+		EOF
 fi
 
-# get_EBS_List gets a list of EBS instances for which a snapshot is desired.
-# The list of EBS instances depends upon the selection_method that is provided
+# get_ebs_list gets a list of EBS instances for which a snapshot is desired.
+# The list of EBS instances depends upon the SELECTION_METHOD that is provided
 # by user input
-get_EBS_List
+get_ebs_list
 
-# the loop below is called once for each volume in $ebs_backup_list - the
+# the loop below is called once for each volume in $EBS_BACKUP_LIST - the
 # currently selected EBS volume is passed in as "ebs_selected"
-for ebs_selected in $ebs_backup_list; do
-  ec2_snapshot_description="ec2ab_${ebs_selected}_$current_date"
-  if ! ec2_snapshot_resource_id=$(
+for ebs_selected in $EBS_BACKUP_LIST; do
+  ec2_snapshot_description="ec2ab_${ebs_selected}_$CURRENT_DATE"
+  if ! EC2_SNAPSHOT_RESOURCE_ID=$(
     aws ec2 create-snapshot \
-      --region "$region" \
+      --region "$REGION" \
       --description "$ec2_snapshot_description" \
       --volume-id "$ebs_selected" \
       --output text \
       --query SnapshotId 2>&1
   ); then
-    echo -e "An error occurred when running ec2-create-snapshot:\n$ec2_snapshot_resource_id" 1>&2 ; exit 70
+    fail "$(cat <<-EOF
+			An error occurred when running ec2-create-snapshot:
+			$EC2_SNAPSHOT_RESOURCE_ID
+			EOF
+    )" 70
   fi
-  create_EBS_Snapshot_Tags
+  create_ebs_snapshot_tags
 done
 
-# if purge_snapshots is true, then run purge_EBS_Snapshots function
-if $purge_snapshots; then
+# if PURGE_SNAPSHOTS is true, then run purge_ebs_snapshots function
+if $PURGE_SNAPSHOTS; then
   echo "Snapshot Purging is Starting Now."
-  purge_EBS_Snapshots
+  purge_ebs_snapshots
 fi
 
 # vim: tabstop=2 shiftwidth=2 expandtab
