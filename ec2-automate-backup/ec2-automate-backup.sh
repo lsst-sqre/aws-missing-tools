@@ -46,9 +46,9 @@ prerequisite_check() {
   done
 }
 
-# get_EBS_List gets a list of available EBS instances depending upon the
+# get_ebs_list gets a list of available EBS instances depending upon the
 # SELECTION_METHOD of EBS selection that is provided by user input
-get_EBS_List() {
+get_ebs_list() {
   case $SELECTION_METHOD in
     volumeid)
       if [[ -z $VOLUMEID ]]; then
@@ -104,7 +104,7 @@ get_EBS_List() {
   fi
 }
 
-create_EBS_Snapshot_Tags() {
+create_ebs_snapshot_tags() {
   # snapshot tags holds all tags that need to be applied to a given snapshot -
   # by aggregating tags we ensure that ec2-create-tags is called only onece
   local snapshot_tags=("Key=CreatedBy,Value=ec2-automate-backup")
@@ -196,7 +196,7 @@ get_purge_after_date_fe() {
   esac
 }
 
-purge_EBS_Snapshots() {
+purge_ebs_snapshots() {
   # snapshot_purge_allowed is a string containing the SnapshotIDs of snapshots
   # that contain a tag with the key value/pair PurgeAllow=true
   local snapshot_purge_allowed
@@ -325,10 +325,10 @@ if [[ -n $PURGE_AFTER_INPUT ]]; then
   echo "Snapshots taken by $APP_NAME will be eligible for purging after the following date (the purge after date given in seconds from epoch): $PURGE_AFTER_DATE_FE."
 fi
 
-# get_EBS_List gets a list of EBS instances for which a snapshot is desired.
+# get_ebs_list gets a list of EBS instances for which a snapshot is desired.
 # The list of EBS instances depends upon the SELECTION_METHOD that is provided
 # by user input
-get_EBS_List
+get_ebs_list
 
 # the loop below is called once for each volume in $EBS_BACKUP_LIST - the
 # currently selected EBS volume is passed in as "ebs_selected"
@@ -344,13 +344,13 @@ for ebs_selected in $EBS_BACKUP_LIST; do
   ); then
     echo -e "An error occurred when running ec2-create-snapshot:\n$EC2_SNAPSHOT_RESOURCE_ID" 1>&2 ; exit 70
   fi
-  create_EBS_Snapshot_Tags
+  create_ebs_snapshot_tags
 done
 
-# if PURGE_SNAPSHOTS is true, then run purge_EBS_Snapshots function
+# if PURGE_SNAPSHOTS is true, then run purge_ebs_snapshots function
 if $PURGE_SNAPSHOTS; then
   echo "Snapshot Purging is Starting Now."
-  purge_EBS_Snapshots
+  purge_ebs_snapshots
 fi
 
 # vim: tabstop=2 shiftwidth=2 expandtab
