@@ -148,10 +148,12 @@ get_date_binary() {
   local uname_result
   uname_result=$(uname)
   case $uname_result in
-    Darwin) DATE_BINARY="posix" ;;
-    FreeBSD) DATE_BINARY="posix" ;;
-    Linux) DATE_BINARY="linux-gnu" ;;
-    *) DATE_BINARY="unknown" ;;
+    Darwin|FreeBSD)
+      echo 'posix';;
+    Linux)
+      echo 'linux-gnu';;
+    *)
+      echo 'unknown';;
   esac
 }
 
@@ -251,7 +253,7 @@ SELECTION_METHOD="volumeid"
 # DATE_BINARY allows a user to set the "date" binary that is installed on their
 # system and, therefore, the options that will be given to the date binary to
 # perform date calculations
-DATE_BINARY=""
+DATE_BINARY=${DATE_BINARY:-$(get_date_binary)}
 # sets the "Name" tag set for a snapshot to false - using "Name" requires that
 # ec2-create-tags be called in addition to ec2-create-snapshot
 NAME_TAG_CREATE=false
@@ -294,10 +296,6 @@ CURRENT_DATE=$(date -u +%s)
 # sets the PurgeAfterFE tag to the number of seconds that a snapshot should be
 # retained
 if [[ -n $PURGE_AFTER_INPUT ]]; then
-  # if the DATE_BINARY is not set, call the get_date_binary function
-  if [[ -z $DATE_BINARY ]]; then
-    get_date_binary
-  fi
   PURGE_AFTER_DATE_FE=$(get_purge_after_date_fe)
   cat <<-EOF
 		Snapshots taken by $APP_NAME will be eligible for purging after the
