@@ -14,6 +14,17 @@
 # buckelij / https://github.com/buckelij
 # https://github.com/ccomerImmerge
 
+print_error() {
+  >&2 echo -e "$@"
+}
+
+fail() {
+  local code=${2:-1}
+  [[ -n $1 ]] && print_error "$1"
+  # shellcheck disable=SC2086
+  exit $code
+}
+
 # confirms that executables required for succesful script execution are
 # available
 prerequisite_check() {
@@ -24,7 +35,11 @@ prerequisite_check() {
     hash $prerequisite &> /dev/null
     if [[ $? == 1 ]]; then
       # has exits with exit status of 70, executable was not found
-      echo "In order to use $app_name, the executable \"$prerequisite\" must be installed." 1>&2 ; exit 70
+      fail "$(cat <<-EOF
+				In order to use ${app_name}, the executable "${prerequisite}" must be
+				installed.
+				EOF
+      )" 70
     fi
   done
 }
@@ -35,32 +50,54 @@ get_EBS_List() {
   case $selection_method in
     volumeid)
       if [[ -z $volumeid ]]; then
-        echo "The selection method \"volumeid\" (which is $app_name's default selection_method of operation or requested by using the -s volumeid parameter) requires a volumeid (-v volumeid) for operation. Correct usage is as follows: \"-v vol-6d6a0527\",\"-s volumeid -v vol-6d6a0527\" or \"-v \"vol-6d6a0527 vol-636a0112\"\" if multiple volumes are to be selected." 1>&2 ; exit 64
+        fail "$(cat <<-EOF
+					The selection method "volumeid" (which is ${app_name}'s default
+					selection_method of operation or requested by using the -s volumeid
+					parameter) requires a volumeid (-v volumeid) for operation. Correct
+					usage is as follows: "-v vol-6d6a0527","-s volumeid -v vol-6d6a0527"
+					or "-v "vol-6d6a0527 vol-636a0112" if multiple volumes are to be
+					selected.
+					EOF
+        )" 64
       fi
-      ebs_selection_string="--volume-ids $volumeid"
+      ebs_selection_string="--volume-ids ${volumeid}"
       ;;
     tag)
       if [[ -z $tag ]]; then
-        echo "The selected selection_method \"tag\" (-s tag) requires a valid tag (-t Backup,Values=true) for operation. Correct usage is as follows: \"-s tag -t Backup,Values=true.\"" 1>&2 ; exit 64
+        fail "$(cat <<-EOF
+					The selected selection_method "tag" (-s tag) requires a valid tag (-t
+					Backup,Values=true) for operation. Correct usage is as follows: "-s
+					tag -t Backup,Values=true."
+					EOF
+        )" 64
       fi
-      ebs_selection_string="--filters Name=tag:$tag"
+      ebs_selection_string="--filters Name=tag:${tag}"
       ;;
-    *) echo "If you specify a selection_method (-s selection_method) for selecting EBS volumes you must select either \"volumeid\" (-s volumeid) or \"tag\" (-s tag)." 1>&2 ; exit 64 ;;
+    *)
+      fail "$(cat <<-EOF
+				If you specify a selection_method (-s selection_method) for selecting
+				EBS volumes you must select either "volumeid" (-s volumeid) or "tag"
+				(-s tag).
+				EOF
+      )" 64
+      ;;
   esac
   # creates a list of all ebs volumes that match the selection string from
   # above
   # shellcheck disable=SC2086
-  ebs_backup_list=$(
+  if ! ebs_backup_list=$(
     aws ec2 describe-volumes \
       --region "$region" \
       $ebs_selection_string \
       --output text \
       --query 'Volumes[*].VolumeId'
-  )
-  # takes the output of the previous command
-  ebs_backup_list_result=$?
-  if [[ $ebs_backup_list_result -gt 0 ]]; then
-    echo -e "An error occurred when running ec2-describe-volumes. The error returned is below:\n$ebs_backup_list" 1>&2 ; exit 70
+  ); then
+    fail "$(cat <<-EOF
+			An error occurred when running ec2-describe-volumes. The error returned
+			is below:
+			$ebs_backup_list
+			EOF
+    )" 70
   fi
 }
 
@@ -177,13 +214,23 @@ purge_EBS_Snapshots() {
     if [[ -z $purge_after_fe ]]; then
       # Alerts user to the fact that a Snapshot was found with PurgeAllow=true
       # but with no PurgeAfterFE date.
-      echo "Snapshot with the Snapshot ID \"$snapshot_id_evaluated\" has the tag \"PurgeAllow=true\" but does not have a \"PurgeAfterFE=xxxxxxxxxx\" key/value pair. $app_name is unable to determine if $snapshot_id_evaluated should be purged." 1>&2
+      print_error "$(cat <<-EOF
+				Snapshot with the Snapshot ID "${snapshot_id_evaluated}" has the tag
+				"PurgeAllow=true" but does not have a "PurgeAfterFE=xxxxxxxxxx"
+				key/value pair.  ${app_name} is unable to determine if
+				${snapshot_id_evaluated} should be purged."
+				EOF
+			)"
     else
       # if $purge_after_fe is less than $current_date then
       # PurgeAfterFE is earlier than the current date
       # and the snapshot can be safely purged
       if [[ $purge_after_fe < $current_date ]]; then
-        echo "Snapshot \"$snapshot_id_evaluated\" with the PurgeAfterFE date of \"$purge_after_fe\" will be deleted."
+        print_error "$(cat <<-EOF
+					Snapshot "${snapshot_id_evaluated}" with the PurgeAfterFE date of
+					"${purge_after_fe}" will be deleted."
+					EOF
+        )"
         aws ec2 delete-snapshot --region "$region" \
           --snapshot-id "$snapshot_id_evaluated" \
           --output text 2>&1
