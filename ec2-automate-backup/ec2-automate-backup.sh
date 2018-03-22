@@ -271,7 +271,8 @@ USER_TAGS=false
 # sets the Purge Snapshot feature to false - if PURGE_SNAPSHOTS=true then
 # snapshots will be purged
 PURGE_SNAPSHOTS=false
-# handles options processing
+# default aws region
+REGION=${AWS_DEFAULT_REGION:-us-east-1}
 
 while getopts :s:c:r:v:t:k:pnhu opt; do
   case $opt in
@@ -294,16 +295,6 @@ while getopts :s:c:r:v:t:k:pnhu opt; do
       ;;
   esac
 done
-
-# if REGION is not set then:
-if [[ -z $REGION ]]; then
-  # if the environment variable $EC2_REGION is not set set to us-east-1
-  if [[ -z $EC2_REGION ]]; then
-    REGION="us-east-1"
-  else
-    REGION=$EC2_REGION
-  fi
-fi
 
 # sets date variable
 CURRENT_DATE=$(date -u +%s)
