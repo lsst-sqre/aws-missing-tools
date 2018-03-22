@@ -104,38 +104,28 @@ get_ebs_list() {
 }
 
 create_ebs_snapshot_tags() {
-  # snapshot tags holds all tags that need to be applied to a given snapshot -
+  # snapshot_tags holds all tags that need to be applied to a given snapshot -
   # by aggregating tags we ensure that ec2-create-tags is called only onece
   local snapshot_tags=("Key=CreatedBy,Value=ec2-automate-backup")
 
-  # if $NAME_TAG_CREATE is true then append ec2ab_${ebs_selected}_$CURRENT_DATE
-  # to the variable $snapshot_tags
   if $NAME_TAG_CREATE; then
     snapshot_tags+=("Key=Name,Value=ec2ab_${ebs_selected}_${CURRENT_DATE}")
   fi
 
-  # if $HOSTNAME_TAG_CREATE is true then append --tag InitiatingHost=$(hostname
-  # -f) to the variable $snapshot_tags
   if $HOSTNAME_TAG_CREATE; then
     snapshot_tags=("Key=InitiatingHost,Value='$(hostname -s)'")
   fi
 
-  # if $PURGE_AFTER_DATE_FE is true, then append $PURGE_AFTER_DATE_FE to the
-  # variable $snapshot_tags
   if [[ -n $PURGE_AFTER_DATE_FE ]]; then
     snapshot_tags=("Key=PurgeAfterFE,Value=${PURGE_AFTER_DATE_FE}")
     snapshot_tags=("Key=PurgeAllow,Value=true")
   fi
 
-  # if $USER_TAGS is true, then append Volume=$ebs_selected and
-  # Created=$CURRENT_DATE to the variable $snapshot_tags
   if $USER_TAGS; then
     snapshot_tags=("Key=Volume,Value=${ebs_selected}")
     snapshot_tags=("Key=Created,Value=$CURRENT_DATE")
   fi
 
-  # if $snapshot_tags is not zero length then set the tag on the snapshot using
-  # aws ec2 create-tags
   echo "Tagging Snapshot $EC2_SNAPSHOT_RESOURCE_ID with the following Tags:"
   for t in "${snapshot_tags[@]}"; do
     echo "$t"
@@ -169,22 +159,25 @@ get_purge_after_date_fe() {
   local purge_after_value_seconds
 
   case $PURGE_AFTER_INPUT in
-    # any number of numbers followed by a letter "d" or "days" multiplied by
-    # 86400 (number of seconds in a day)
-    [0-9]*d) purge_after_value_seconds=$(( ${PURGE_AFTER_INPUT%?} * 86400 )) ;;
-    # any number of numbers followed by a letter "h" or "hours" multiplied by
-    # 3600 (number of seconds in an hour)
-    [0-9]*h) purge_after_value_seconds=$(( ${PURGE_AFTER_INPUT%?} * 3600 )) ;;
-    # any number of numbers followed by a letter "m" or "minutes" multiplied by
-    # 60 (number of seconds in a minute)
-    [0-9]*m) purge_after_value_seconds=$(( ${PURGE_AFTER_INPUT%?} * 60 ));;
-    # no trailing digits default is days - multiply by 86400 (number of minutes
-    # in a day)
-    *) purge_after_value_seconds=$(( PURGE_AFTER_INPUT * 86400 ));;
+    # numbers followed by a letter "d" or "days"
+    [0-9]*d)
+      purge_after_value_seconds=$(( ${PURGE_AFTER_INPUT%?} * 86400 ))
+      ;;
+    # numbers followed by a letter "h" or "hours"
+    [0-9]*h)
+      purge_after_value_seconds=$(( ${PURGE_AFTER_INPUT%?} * 3600 ))
+      ;;
+    # numbers followed by a letter "m" or "minutes"
+    [0-9]*m)
+      purge_after_value_seconds=$(( ${PURGE_AFTER_INPUT%?} * 60 ))
+      ;;
+    # no trailing letter defaults to days
+    *)
+      purge_after_value_seconds=$(( PURGE_AFTER_INPUT * 86400 ))
+      ;;
   esac
 
-  # based on the DATE_BINARY variable, the case statement below will determine
-  # the method to use to determine "purge_after_days" in the future
+  # convert seconds into the future into a unix epoch
   case $DATE_BINARY in
     linux-gnu)
       date -d +${purge_after_value_seconds}sec -u +%s;;
