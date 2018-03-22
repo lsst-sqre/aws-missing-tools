@@ -237,7 +237,8 @@ purge_ebs_snapshots() {
 					"${purge_after_fe}" will be deleted."
 					EOF
         )"
-        aws ec2 delete-snapshot --region "$REGION" \
+        aws ec2 delete-snapshot \
+          --region "$REGION" \
           --snapshot-id "$snapshot_id_evaluated" \
           --output text 2>&1
       fi
