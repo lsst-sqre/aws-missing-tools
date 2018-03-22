@@ -276,7 +276,6 @@ PURGE_SNAPSHOTS=false
 while getopts :s:c:r:v:t:k:pnhu opt; do
   case $opt in
     s) SELECTION_METHOD="$OPTARG" ;;
-    c) CRON_PRIMER="$OPTARG" ;;
     r) REGION="$OPTARG" ;;
     v) VOLUMEID="$OPTARG" ;;
     t) TAG="$OPTARG" ;;
@@ -295,18 +294,6 @@ while getopts :s:c:r:v:t:k:pnhu opt; do
       ;;
   esac
 done
-
-# sources "CRON_PRIMER" file for running under cron or other restricted
-# environments - this file should contain the variables and environment
-# configuration required for ec2-automate-backup to run correctly
-if [[ -n $CRON_PRIMER ]]; then
-  if [[ -f $CRON_PRIMER ]]; then
-    # shellcheck disable=SC1090
-    source "$CRON_PRIMER"
-  else
-    echo "Cron Primer File \"$CRON_PRIMER\" Could Not Be Found." 1>&2 ; exit 70
-  fi
-fi
 
 # if REGION is not set then:
 if [[ -z $REGION ]]; then
