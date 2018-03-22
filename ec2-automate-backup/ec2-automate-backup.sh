@@ -113,17 +113,17 @@ create_ebs_snapshot_tags() {
   fi
 
   if $HOSTNAME_TAG_CREATE; then
-    snapshot_tags=("Key=InitiatingHost,Value='$(hostname -s)'")
+    snapshot_tags+=("Key=InitiatingHost,Value='$(hostname -s)'")
   fi
 
   if [[ -n $PURGE_AFTER_DATE_FE ]]; then
-    snapshot_tags=("Key=PurgeAfterFE,Value=${PURGE_AFTER_DATE_FE}")
-    snapshot_tags=("Key=PurgeAllow,Value=true")
+    snapshot_tags+=("Key=PurgeAfterFE,Value=${PURGE_AFTER_DATE_FE}")
+    snapshot_tags+=("Key=PurgeAllow,Value=true")
   fi
 
   if $USER_TAGS; then
-    snapshot_tags=("Key=Volume,Value=${ebs_selected}")
-    snapshot_tags=("Key=Created,Value=$CURRENT_DATE")
+    snapshot_tags+=("Key=Volume,Value=${ebs_selected}")
+    snapshot_tags+=("Key=Created,Value=$CURRENT_DATE")
   fi
 
   echo "Tagging Snapshot $EC2_SNAPSHOT_RESOURCE_ID with the following Tags:"
