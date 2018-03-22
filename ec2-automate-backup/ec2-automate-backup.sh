@@ -206,11 +206,13 @@ purge_ebs_snapshots() {
     # gets the "PurgeAfterFE" date which is in UTC with UNIX Time format (or
     # xxxxxxxxxx / %s)
     local purge_after_fe
+    # shellcheck disable=SC2016
     purge_after_fe=$(
       aws ec2 describe-snapshots \
         --region "$REGION" \
         --snapshot-ids "$snapshot_id_evaluated" \
-        --output text | grep '^TAGS.*PurgeAfterFE' | cut -f 3
+        --output text \
+        --query 'Snapshots[*].Tags[?Key==`PurgeAfterFE`].Value'
     )
 
     # if purge_after_date is not set then we have a problem. Need to alert
