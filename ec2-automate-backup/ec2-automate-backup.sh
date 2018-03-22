@@ -1,4 +1,4 @@
-#!/bin/bash -
+#!/bin/bash
 # Date: 2015-10-26
 # Version 0.10
 # License Type: GNU GENERAL PUBLIC LICENSE, Version 3
@@ -13,6 +13,8 @@
 # Josef / https://github.com/J0s3f
 # buckelij / https://github.com/buckelij
 # https://github.com/ccomerImmerge
+
+set -e
 
 print_error() {
   >&2 echo -e "$@"
