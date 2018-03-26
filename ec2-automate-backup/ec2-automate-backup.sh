@@ -32,6 +32,14 @@ has_cmd() {
   command -v "$command" > /dev/null 2>&1
 }
 
+# http://stackoverflow.com/questions/1527049/join-elements-of-an-array#17841619
+join() {
+  local IFS=${1?separator is required}
+  shift
+
+  echo -n "$*"
+}
+
 # confirms that executables required for succesful script execution are
 # available
 prerequisite_check() {
@@ -49,19 +57,19 @@ prerequisite_check() {
 # SELECTION_METHOD of EBS selection that is provided by user input
 get_ebs_list() {
   case $SELECTION_METHOD in
-    volumeid)
-      if [[ -z $VOLUMEID ]]; then
+    volume-id)
+      if [[ -z $VOLUME_ID ]]; then
         fail "$(cat <<-EOF
-					The selection method "volumeid" (which is ${APP_NAME}'s default
-					SELECTION_METHOD of operation or requested by using the -s volumeid
-					parameter) requires a volumeid (-v volumeid) for operation. Correct
-					usage is as follows: "-v vol-6d6a0527","-s volumeid -v vol-6d6a0527"
+					The selection method "volume-id" (which is ${APP_NAME}'s default
+					SELECTION_METHOD of operation or requested by using the -s volume-id
+					parameter) requires a volume-id (-v volume-id) for operation. Correct
+					usage is as follows: "-v vol-6d6a0527","-s volume-id -v vol-6d6a0527"
 					or "-v "vol-6d6a0527 vol-636a0112" if multiple volumes are to be
 					selected.
 					EOF
         )" 64
       fi
-      local ebs_selection_string="--volume-ids ${VOLUMEID}"
+      local ebs_selection_string="--volume-ids ${VOLUME_ID}"
       ;;
     tag)
       if [[ -z $TAG ]]; then
@@ -77,7 +85,7 @@ get_ebs_list() {
     *)
       fail "$(cat <<-EOF
 				If you specify a SELECTION_METHOD (-s SELECTION_METHOD) for selecting
-				EBS volumes you must select either "volumeid" (-s volumeid) or "tag"
+				EBS volumes you must select either "volume-id" (-s volume-id) or "tag"
 				(-s tag).
 				EOF
       )" 64
@@ -103,41 +111,50 @@ get_ebs_list() {
   fi
 }
 
-create_ebs_snapshot_tags() {
-  # snapshot_tags holds all tags that need to be applied to a given snapshot -
-  # by aggregating tags we ensure that ec2-create-tags is called only onece
-  local snapshot_tags=("Key=CreatedBy,Value=ec2-automate-backup")
+# construct an ec2 "tag specification".
+# per aws ec2 create-snapshot help
+#
+# ResourceType=string,Tags=[{Key=string,Value=string},{Key=string,Value=string}]
+snapshot_tags() {
+  local vol_id=${1?vol_id is required}
 
-  if $NAME_TAG_CREATE; then
-    snapshot_tags+=("Key=Name,Value=ec2ab_${ebs_selected}_${CURRENT_DATE}")
+  declare -A tags
+  tags[CreatedBy]="ec2-automate-backup"
+
+  if [[ $NAME_TAG_CREATE == true && -v vol_id && -v CURRENT_DATE ]]; then
+    tags[Name]="ec2ab_${vol_id}_${CURRENT_DATE}"
   fi
 
-  if $HOSTNAME_TAG_CREATE; then
-    snapshot_tags+=("Key=InitiatingHost,Value='$(hostname -s)'")
+  if [[ $HOSTNAME_TAG_CREATE == true ]]; then
+    tags[InitiatingHost]="$(hostname -s)"
   fi
 
-  if [[ -n $PURGE_AFTER_DATE_FE ]]; then
-    snapshot_tags+=("Key=PurgeAfterFE,Value=${PURGE_AFTER_DATE_FE}")
-    snapshot_tags+=("Key=PurgeAllow,Value=true")
+  if [[ -v PURGE_AFTER_DATE_FE ]]; then
+    tags[PurgeAfterFE]="${PURGE_AFTER_DATE_FE}"
+    tags[PurgeAllow]="true"
   fi
 
-  if $USER_TAGS; then
-    snapshot_tags+=("Key=Volume,Value=${ebs_selected}")
-    snapshot_tags+=("Key=Created,Value=$CURRENT_DATE")
+  if [[ $USER_TAGS == true ]]; then
+    [[ -v vol_id ]] && tags[Volume]="${vol_id}"
+    [[ -v CURRENT_DATE ]] && tags[Created]="$CURRENT_DATE"
   fi
 
-  echo "Tagging Snapshot $EC2_SNAPSHOT_RESOURCE_ID with the following Tags:"
-  for t in "${snapshot_tags[@]}"; do
-    echo "$t"
+  local pairs=()
+  for k in "${!tags[@]}"
+  do
+    pairs+=("{Key=${k},Value=${tags[$k]}}")
   done
 
-  local tags_argument="--tags ${snapshot_tags[*]}"
-  # shellcheck disable=SC2086
-  aws ec2 create-tags \
-    --resources "$EC2_SNAPSHOT_RESOURCE_ID" \
-    --region "$REGION" $tags_argument \
-    --output text \
-    2>&1
+  if [[ -v CUSTOM_TAGS ]]; then
+    for item in $CUSTOM_TAGS; do
+      pairs+=("{${item}}")
+    done
+  fi
+
+  local tagsSpec
+  tagsSpec="ResourceType=snapshot,Tags=[$(join ',' "${pairs[@]}")]"
+
+  echo "$tagsSpec"
 }
 
 get_date_binary() {
@@ -252,7 +269,7 @@ prerequisite_check
 
 APP_NAME="$(basename "$0")"
 # sets defaults
-SELECTION_METHOD="volumeid"
+SELECTION_METHOD="volume-id"
 # DATE_BINARY allows a user to set the "date" binary that is installed on their
 # system and, therefore, the options that will be given to the date binary to
 # perform date calculations
@@ -271,17 +288,18 @@ PURGE_SNAPSHOTS=false
 # default aws region
 REGION=${AWS_DEFAULT_REGION:-us-east-1}
 
-while getopts :s:c:r:v:t:k:pnhu opt; do
+while getopts :s:c:r:v:t:k:c:pnhu opt; do
   case $opt in
     s) SELECTION_METHOD="$OPTARG" ;;
     r) REGION="$OPTARG" ;;
-    v) VOLUMEID="$OPTARG" ;;
+    v) VOLUME_ID="$OPTARG" ;;
     t) TAG="$OPTARG" ;;
     k) PURGE_AFTER_INPUT="$OPTARG" ;;
     n) NAME_TAG_CREATE=true ;;
     h) HOSTNAME_TAG_CREATE=true ;;
     p) PURGE_SNAPSHOTS=true ;;
     u) USER_TAGS=true ;;
+    c) CUSTOM_TAGS="$OPTARG" ;;
     *)
       fail "$(cat <<-EOF
 				Error with Options Input. Cause of failure is most likely that an
@@ -314,13 +332,16 @@ get_ebs_list
 
 # the loop below is called once for each volume in $EBS_BACKUP_LIST - the
 # currently selected EBS volume is passed in as "ebs_selected"
-for ebs_selected in $EBS_BACKUP_LIST; do
-  ec2_snapshot_description="ec2ab_${ebs_selected}_$CURRENT_DATE"
+for vol_id in $EBS_BACKUP_LIST; do
+  ec2_snapshot_description="ec2ab_${vol_id}_$CURRENT_DATE"
+  tag_spec="$(snapshot_tags "$vol_id")"
+
   if ! EC2_SNAPSHOT_RESOURCE_ID=$(
     aws ec2 create-snapshot \
       --region "$REGION" \
       --description "$ec2_snapshot_description" \
-      --volume-id "$ebs_selected" \
+      --volume-id "$vol_id" \
+      --tag-specifications "$tag_spec" \
       --output text \
       --query SnapshotId 2>&1
   ); then
@@ -330,7 +351,6 @@ for ebs_selected in $EBS_BACKUP_LIST; do
 			EOF
     )" 70
   fi
-  create_ebs_snapshot_tags
 done
 
 # if PURGE_SNAPSHOTS is true, then run purge_ebs_snapshots function
