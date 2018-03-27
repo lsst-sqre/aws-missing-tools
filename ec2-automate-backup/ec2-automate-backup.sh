@@ -190,6 +190,10 @@ get_purge_after_date_fe() {
     [0-9]*m)
       purge_after_value_seconds=$(( ${PURGE_AFTER_INPUT%?} * 60 ))
       ;;
+    # numbers followed by a letter "s" or "seconds"
+    [0-9]*s)
+      purge_after_value_seconds=$(( ${PURGE_AFTER_INPUT%?} ))
+      ;;
     # no trailing letter defaults to days
     *)
       purge_after_value_seconds=$(( PURGE_AFTER_INPUT * 86400 ))
