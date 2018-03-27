@@ -53,6 +53,14 @@ prerequisite_check() {
   done
 }
 
+run() {
+  if [[ $DEBUG == true ]]; then
+    (set -x; "$@")
+  else
+    "$@"
+  fi
+}
+
 # get_ebs_list gets a list of available EBS instances depending upon the
 # SELECTION_METHOD of EBS selection that is provided by user input
 get_ebs_list() {
@@ -96,7 +104,7 @@ get_ebs_list() {
   # above
   # shellcheck disable=SC2086
   if ! EBS_BACKUP_LIST=$(
-    aws ec2 describe-volumes \
+    run aws ec2 describe-volumes \
       --region "$REGION" \
       $ebs_selection_string \
       --output text \
@@ -223,7 +231,7 @@ purge_ebs_snapshots() {
   # that contain a tag with the key value/pair PurgeAllow=true
   local snapshot_purge_allowed
   snapshot_purge_allowed=$(
-    aws ec2 describe-snapshots \
+    run aws ec2 describe-snapshots \
       --region "$REGION" \
       --filters "${filters[@]}" \
       --output text \
@@ -236,7 +244,7 @@ purge_ebs_snapshots() {
     local purge_after_fe
     # shellcheck disable=SC2016
     purge_after_fe=$(
-      aws ec2 describe-snapshots \
+      run aws ec2 describe-snapshots \
         --region "$REGION" \
         --snapshot-ids "$snapshot_id_evaluated" \
         --output text \
@@ -265,7 +273,7 @@ purge_ebs_snapshots() {
 					"${purge_after_fe}" will be deleted."
 					EOF
         )"
-        aws ec2 delete-snapshot \
+        run aws ec2 delete-snapshot \
           --region "$REGION" \
           --snapshot-id "$snapshot_id_evaluated" \
           --output text 2>&1
@@ -299,7 +307,7 @@ PURGE_SNAPSHOTS=false
 # default aws region
 REGION=${AWS_DEFAULT_REGION:-us-east-1}
 
-while getopts :s:c:r:v:t:k:c:pnhu opt; do
+while getopts :s:c:r:v:t:k:c:pnhud opt; do
   case $opt in
     s) SELECTION_METHOD="$OPTARG" ;;
     r) REGION="$OPTARG" ;;
@@ -311,6 +319,7 @@ while getopts :s:c:r:v:t:k:c:pnhu opt; do
     p) PURGE_SNAPSHOTS=true ;;
     u) USER_TAGS=true ;;
     c) CUSTOM_TAGS="$OPTARG" ;;
+    d) DEBUG=true ;;
     *)
       fail "$(cat <<-EOF
 				Error with Options Input. Cause of failure is most likely that an
@@ -348,7 +357,7 @@ for vol_id in $EBS_BACKUP_LIST; do
   tag_spec="$(snapshot_tags "$vol_id")"
 
   if ! EC2_SNAPSHOT_RESOURCE_ID=$(
-    aws ec2 create-snapshot \
+    run aws ec2 create-snapshot \
       --region "$REGION" \
       --description "$ec2_snapshot_description" \
       --volume-id "$vol_id" \
