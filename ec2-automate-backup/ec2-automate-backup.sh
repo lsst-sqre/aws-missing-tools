@@ -212,13 +212,20 @@ get_purge_after_date_fe() {
 }
 
 purge_ebs_snapshots() {
+  local filters=("Name=tag:PurgeAllow,Values=true")
+
+  if [[ -v CUSTOM_TAGS ]]; then
+    local fixed_keys="${CUSTOM_TAGS//Key=/Name=tag:}"
+    filters+=("${fixed_keys//Value=/Values=}")
+  fi
+
   # snapshot_purge_allowed is a string containing the SnapshotIDs of snapshots
   # that contain a tag with the key value/pair PurgeAllow=true
   local snapshot_purge_allowed
   snapshot_purge_allowed=$(
     aws ec2 describe-snapshots \
       --region "$REGION" \
-      --filters Name=tag:PurgeAllow,Values=true \
+      --filters "${filters[@]}" \
       --output text \
       --query 'Snapshots[*].SnapshotId'
   )
