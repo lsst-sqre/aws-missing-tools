@@ -350,6 +350,13 @@ fi
 # by user input
 get_ebs_list
 
+if [[ $DEBUG == true ]]; then
+  print_error "EBS volume-id(s) to snapshot:"
+  for vol_id in $EBS_BACKUP_LIST; do
+    print_error "\t${vol_id}"
+  done
+fi
+
 # the loop below is called once for each volume in $EBS_BACKUP_LIST - the
 # currently selected EBS volume is passed in as "ebs_selected"
 for vol_id in $EBS_BACKUP_LIST; do
