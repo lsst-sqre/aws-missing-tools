@@ -276,7 +276,7 @@ purge_ebs_snapshots() {
         run aws ec2 delete-snapshot \
           --region "$REGION" \
           --snapshot-id "$snapshot_id_evaluated" \
-          --output text 2>&1
+          --output text
       fi
     fi
   done
@@ -350,6 +350,13 @@ fi
 # by user input
 get_ebs_list
 
+if [[ $DEBUG == true ]]; then
+  print_error "EBS volume-id(s) to snapshot:"
+  for vol_id in $EBS_BACKUP_LIST; do
+    print_error "\t${vol_id}"
+  done
+fi
+
 # the loop below is called once for each volume in $EBS_BACKUP_LIST - the
 # currently selected EBS volume is passed in as "ebs_selected"
 for vol_id in $EBS_BACKUP_LIST; do
@@ -363,7 +370,7 @@ for vol_id in $EBS_BACKUP_LIST; do
       --volume-id "$vol_id" \
       --tag-specifications "$tag_spec" \
       --output text \
-      --query SnapshotId 2>&1
+      --query SnapshotId
   ); then
     fail "$(cat <<-EOF
 			An error occurred when running ec2-create-snapshot:
